@@ -1,6 +1,7 @@
 package com.bignerdranch.android.photogallery;
 
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.AsyncTask;
@@ -10,6 +11,7 @@ import android.os.Handler;
 import android.os.StrictMode;
 import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
+import android.support.v4.util.LruCache;
 import android.support.v7.widget.GridLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.util.Log;
@@ -20,6 +22,11 @@ import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.squareup.picasso.Callback;
+import com.squareup.picasso.Picasso;
+import com.squareup.picasso.Target;
+
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -32,6 +39,8 @@ public class PhotoGalleryFragment extends Fragment {
     private GridLayoutManager manager;
     private ThumbnailDownloader<PhotoHolder> mThumbnailDownloader;
 
+    private LruCache<String, Bitmap> mMemoryCache;
+
     public static PhotoGalleryFragment newInstance() {
         return new PhotoGalleryFragment();
     }
@@ -39,7 +48,7 @@ public class PhotoGalleryFragment extends Fragment {
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        
+
         setRetainInstance(true);
         new FetchItemsTask().execute();
 
@@ -48,14 +57,38 @@ public class PhotoGalleryFragment extends Fragment {
         mThumbnailDownloader.setThumbnailDownloadListener(
         new ThumbnailDownloader.ThumbnailDownloadListener<PhotoHolder>() {
             @Override
-            public void onThumbnailDownloaded(PhotoHolder photoHolder, Bitmap bitmap) {
+            public void onThumbnailDownloaded(PhotoHolder photoHolder, Bitmap bitmap, String url) {
                 Drawable drawable = new BitmapDrawable(getResources(),bitmap);
                 photoHolder.bindDrawable(drawable);
+                addBitmapToMemoryCache(url,bitmap);
             }
         });
         mThumbnailDownloader.start();
         mThumbnailDownloader.getLooper();
+
+        final int maxMemory = (int) (Runtime.getRuntime().maxMemory() / 1024);
+        // Use 1/8th of the available memory for this memory cache.
+        final int cacheSize = maxMemory / 8;
+        mMemoryCache = new LruCache<String, Bitmap>(cacheSize) {
+            @Override
+            protected int sizeOf(String key, Bitmap bitmap) {
+                // The cache size will be measured in kilobytes rather than
+                // number of items.
+                return bitmap.getByteCount() / 1024;
+            }
+        };
+
         Log.i(TAG, "Background thread started");
+    }
+
+    public void addBitmapToMemoryCache(String key, Bitmap bitmap) {
+        if (getBitmapFromMemCache(key) == null) {
+            mMemoryCache.put(key, bitmap);
+        }
+    }
+
+    public Bitmap getBitmapFromMemCache(String key) {
+        return mMemoryCache.get(key);
     }
 
     @Override
@@ -76,9 +109,16 @@ public class PhotoGalleryFragment extends Fragment {
     public View onCreateView(LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.fragment_photo_gallery, container, false);
         mRecyclerView = view.findViewById(R.id.photo_gallery_view);
-        mRecyclerView.setLayoutManager(new GridLayoutManager(getActivity(), 3));
+        mRecyclerView.setLayoutManager(new GridLayoutManager(getActivity(), 3,GridLayoutManager.VERTICAL,false));
+        mRecyclerView.addOnScrollListener(new PhotoScrollListener());
         setupAdapter();
         manager = (GridLayoutManager) mRecyclerView.getLayoutManager();
+
+        int lastVisibleItemPos = manager.findLastVisibleItemPosition();
+        int firstVisiblePos = manager.findFirstVisibleItemPosition();
+        Log.i(TAG,"First visible in onCreateView" + String.valueOf(firstVisiblePos));
+        Log.i(TAG,"Last visible in onCreateView" + String.valueOf(lastVisibleItemPos));
+
         return view;
     }
 
@@ -134,7 +174,18 @@ public class PhotoGalleryFragment extends Fragment {
             GalleryItem galleryItem = mGalleryItems.get(position);
             Drawable placeHolder = getResources().getDrawable(R.drawable.bill_up_close);
             photoHolder.bindDrawable(placeHolder);
-            mThumbnailDownloader.queueThumbnail(photoHolder,galleryItem.getUrl());
+//            if (galleryItem.getUrl()==null){
+//                Log.i(TAG,"NULL URL");
+//                return;
+//            }
+            Bitmap bitmap = getBitmapFromMemCache(galleryItem.getUrl());
+            if (bitmap != null) {
+                Drawable drawable = new BitmapDrawable(getResources(), bitmap);
+                photoHolder.bindDrawable(drawable);
+            }
+            else {
+                mThumbnailDownloader.queueThumbnail(photoHolder, galleryItem.getUrl());
+            }
         }
 
         @Override
@@ -143,5 +194,52 @@ public class PhotoGalleryFragment extends Fragment {
         }
     }
 
+    private class PhotoScrollListener extends RecyclerView.OnScrollListener{
+
+        @Override
+        public void onScrollStateChanged(RecyclerView recyclerView, int newState) {
+            super.onScrollStateChanged(recyclerView, newState);
+
+            if(newState==RecyclerView.SCROLL_STATE_IDLE) {
+                Log.i(TAG,"SCROLL_STATE_IDLE");
+
+                int lastVisibleItemPos = manager.findLastVisibleItemPosition();
+                Log.i(TAG,String.valueOf(lastVisibleItemPos));
+                int lastCachedPos;
+                if ((lastVisibleItemPos + 15) < mItems.size()-1) {
+                    lastCachedPos = lastVisibleItemPos + 10;
+                }
+                else {
+                    lastCachedPos = mItems.size() - 1;
+                }
+                Log.i(TAG,String.valueOf(lastCachedPos));
+                for(int i = lastVisibleItemPos+1; i <= lastCachedPos; i++){
+                    ImageView imageView = new ImageView(getActivity());
+                    Picasso.with(getActivity())
+                           .load(mItems.get(i).getUrl())
+                           .error(R.mipmap.ic_launcher)
+                           .into(imageView,new Callback() {
+                            @Override
+                            public void onSuccess() {
+                                Log.i(TAG, "onSuccess ");
+                            }
+
+                            @Override
+                            public void onError() {
+                                Log.i(TAG, "onError");
+                            }
+                            });
+
+                }
+            }
+
+        }
+
+        @Override
+        public void onScrolled(RecyclerView recyclerView, int dx, int dy) {
+            super.onScrolled(recyclerView, dx, dy);
+            Log.i(TAG,"onScrolled");
+        }
+    }
 
 }
