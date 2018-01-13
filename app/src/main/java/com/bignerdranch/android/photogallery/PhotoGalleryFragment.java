@@ -1,5 +1,6 @@
 package com.bignerdranch.android.photogallery;
 
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.drawable.BitmapDrawable;
@@ -22,7 +23,9 @@ import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.ImageView;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -42,6 +45,7 @@ public class PhotoGalleryFragment extends Fragment {
     private List<GalleryItem> mItems = new ArrayList<>();
     private GridLayoutManager manager;
     private ThumbnailDownloader<PhotoHolder> mThumbnailDownloader;
+    private ProgressBar mProgressBar;
 
     private LruCache<String, Bitmap> mMemoryCache;
 
@@ -91,15 +95,26 @@ public class PhotoGalleryFragment extends Fragment {
         super.onCreateOptionsMenu(menu, menuInflater);
         menuInflater.inflate(R.menu.fragment_photo_gallery,menu);
 
-        MenuItem searchItem = menu.findItem(R.id.menu_item_search);
+        final MenuItem searchItem = menu.findItem(R.id.menu_item_search);
         final SearchView searchView = (SearchView) searchItem.getActionView();
+
 
         searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
             @Override
             public boolean onQueryTextSubmit(String s) {
                 Log.d(TAG, "QueryTextSubmit: " + s);
                 QueryPreferences.setStoredQuery(getActivity(),s);
+                mRecyclerView.setAdapter(null);
                 updateItems();
+                //searchView.clearFocus();
+                searchView.setIconified(true);
+                searchView.setIconified(true);
+                InputMethodManager imm =
+                        (InputMethodManager) getActivity().getSystemService(Context.INPUT_METHOD_SERVICE);
+                imm.hideSoftInputFromWindow(searchView.getWindowToken(), 0);
+
+                mProgressBar.setVisibility(ProgressBar.VISIBLE);
+                Log.i(TAG,"onQueryTextSubmit");
                 return true;
             }
 
@@ -127,6 +142,7 @@ public class PhotoGalleryFragment extends Fragment {
         switch (item.getItemId()) {
             case R.id.menu_item_clear:
                 QueryPreferences.setStoredQuery(getActivity(), null);
+                //searchView.setIconified(true);
                 updateItems();
                 return true;
             default:
@@ -172,11 +188,7 @@ public class PhotoGalleryFragment extends Fragment {
         setupAdapter();
         manager = (GridLayoutManager) mRecyclerView.getLayoutManager();
 
-        int lastVisibleItemPos = manager.findLastVisibleItemPosition();
-        int firstVisiblePos = manager.findFirstVisibleItemPosition();
-        Log.i(TAG,"First visible in onCreateView" + String.valueOf(firstVisiblePos));
-        Log.i(TAG,"Last visible in onCreateView" + String.valueOf(lastVisibleItemPos));
-
+        mProgressBar = view.findViewById(R.id.progress_bar_id);
         return view;
     }
 
@@ -206,6 +218,7 @@ public class PhotoGalleryFragment extends Fragment {
         protected void onPostExecute(List<GalleryItem> galleryItems) {
             mItems = galleryItems;
             setupAdapter();
+            mProgressBar.setVisibility(View.INVISIBLE);
         }
     }
 
@@ -241,10 +254,10 @@ public class PhotoGalleryFragment extends Fragment {
             GalleryItem galleryItem = mGalleryItems.get(position);
             Drawable placeHolder = getResources().getDrawable(R.drawable.bill_up_close);
             photoHolder.bindDrawable(placeHolder);
-//            if (galleryItem.getUrl()==null){
-//                Log.i(TAG,"NULL URL");
-//                return;
-//            }
+            if (galleryItem.getUrl()==null){
+                Log.i(TAG,"NULL URL");
+                return;
+            }
             Bitmap bitmap = getBitmapFromMemCache(galleryItem.getUrl());
             if (bitmap != null) {
                 Drawable drawable = new BitmapDrawable(getResources(), bitmap);
