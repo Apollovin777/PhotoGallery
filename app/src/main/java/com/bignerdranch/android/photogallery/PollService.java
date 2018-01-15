@@ -83,7 +83,8 @@ public class PollService extends IntentService {
 
             Resources resources = getResources();
             Intent i = PhotoGalleryActivity.newIntent(this);
-            PendingIntent pi = PendingIntent.getService(this,0,i,PendingIntent.FLAG_UPDATE_CURRENT);
+            PendingIntent pi = PendingIntent.getActivity(
+                    this,0,i,PendingIntent.FLAG_UPDATE_CURRENT);
 
             Notification notification = new NotificationCompat.Builder(this)
                     .setTicker(resources.getString(R.string.new_pictures_title))
