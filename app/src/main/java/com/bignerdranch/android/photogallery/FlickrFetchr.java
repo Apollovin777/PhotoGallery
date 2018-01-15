@@ -64,6 +64,7 @@ public class FlickrFetchr {
 
     public List<GalleryItem> fetchRecentPhotos() {
         String url = buildUrl(FETCH_RECENTS_METHOD,null);
+        Log.i(TAG,url);
         return downloadGalleryItems(url);
     }
 
@@ -76,7 +77,7 @@ public class FlickrFetchr {
         List<GalleryItem> items = new ArrayList<>();
 
         try {
-            Log.i(TAG, "URL: " + url);
+
             String jsonString = getUrlString(url);
             JSONObject jsonBody = new JSONObject(jsonString);
             JSONObject photosJsonObject = jsonBody.getJSONObject("photos");
@@ -88,7 +89,7 @@ public class FlickrFetchr {
 
             //parseItems(items, jsonBody);
 
-            Log.i(TAG, "Received JSON: " + jsonString);
+
         } catch (IOException ioe) {
             Log.e(TAG, "Failed to fetch items", ioe);
         } catch (JSONException je) {
