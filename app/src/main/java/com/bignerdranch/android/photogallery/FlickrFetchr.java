@@ -64,7 +64,6 @@ public class FlickrFetchr {
 
     public List<GalleryItem> fetchRecentPhotos() {
         String url = buildUrl(FETCH_RECENTS_METHOD,null);
-        Log.i(TAG,url);
         return downloadGalleryItems(url);
     }
 
@@ -86,8 +85,6 @@ public class FlickrFetchr {
             Gson gson = new Gson();
             Type collectionType = new TypeToken<List<GalleryItem>>(){}.getType();
             items = gson.fromJson(photoJsonArray.toString(), collectionType);
-
-            //parseItems(items, jsonBody);
 
 
         } catch (IOException ioe) {
